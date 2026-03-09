@@ -3,153 +3,112 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ligue 1 Interactive 2025/2026</title>
-    
+    <title>Ligue 1 - Carte Interactive</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    
     <style>
-        body { font-family: 'Segoe UI', sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; background: #f4f4f9; }
-        header { background: #1a2a6c; color: white; padding: 15px; text-align: center; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
-        #map { flex: 2; width: 100%; }
-        #matchs-container { flex: 1; padding: 20px; overflow-y: auto; background: white; border-top: 5px solid #fdbb2d; }
-        .match-card { border-bottom: 1px solid #eee; padding: 12px; display: flex; justify-content: space-between; align-items: center; }
-        .score { background: #1a2a6c; color: white; padding: 5px 12px; border-radius: 4px; font-weight: bold; font-family: monospace; }
-        .status-msg { text-align: center; font-style: italic; color: #666; padding: 20px; }
-        .error-msg { color: #d9534f; font-weight: bold; text-align: center; padding: 20px; }
+        body { font-family: sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; }
+        header { background: #1a2a6c; color: white; padding: 10px; text-align: center; }
+        #map { flex: 2; width: 100%; background: #aad3df; }
+        #matchs-container { flex: 1; padding: 15px; overflow-y: auto; background: white; border-top: 4px solid #fdbb2d; }
+        .match-card { border-bottom: 1px solid #eee; padding: 8px; display: flex; justify-content: space-between; }
+        .score { background: #1a2a6c; color: white; padding: 2px 8px; border-radius: 4px; font-weight: bold; }
+        .error { color: #d9534f; font-size: 0.9em; text-align: center; }
     </style>
 </head>
 <body>
 
-    <header>
-        <h1>Ligue 1 - Saison 2025/2026</h1>
-    </header>
+<header><h1>Ligue 1 Interactive 2026</h1></header>
+<div id="map"></div>
+<div id="matchs-container">
+    <h2 id="stade-nom">Sélectionnez un club</h2>
+    <div id="liste-matchs">Chargement...</div>
+</div>
 
-    <div id="map"></div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+    // 1. CONFIG
+    const API_KEY = '42ddec7c6cd54e0786b0444e2001c25e';
+    const STADES_GPS = {
+        "PSG": [48.8414, 2.2530], "OM": [43.2698, 5.3959], "OL": [45.7653, 4.9819],
+        "Monaco": [43.7276, 7.4155], "Lille": [50.6119, 3.1305], "Lens": [50.4328, 2.8149],
+        "Rennes": [48.1075, -1.7033], "Nice": [43.7053, 7.1927], "Brest": [48.4030, -4.4614],
+        "Strasbourg": [48.5603, 7.7546], "Toulouse": [43.5833, 1.4341], "Auxerre": [47.7867, 3.5880],
+        "Angers": [47.4615, -0.5302], "Le Havre": [49.5002, 0.1701], "Saint-Étienne": [45.4608, 4.3901],
+        "Nantes": [47.2561, -1.5247], "Paris FC": [48.8284, 2.3761], "Metz": [49.1098, 6.1590]
+    };
 
-    <div id="matchs-container">
-        <h2 id="stade-nom">Sélectionnez un stade sur la carte</h2>
-        <div id="liste-matchs" class="status-msg">Chargement des données via proxy...</div>
-    </div>
+    // 2. CARTE
+    const map = L.map('map').setView([46.6, 2.2], 6);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    // 3. RECUPERATION DES DONNÉES
+    async function init() {
+        try {
+            const res = await fetch('https://api.football-data.org/v4/competitions/FL1/teams', {
+                headers: { 'X-Auth-Token': API_KEY }
+            });
 
-    <script>
-        // --- CONFIGURATION ---
-        const API_KEY = '42ddec7c6cd54e0786b0444e2001c25e'; 
-        const COMPETITION = 'FL1'; 
-        // Proxy pour éviter les blocages CORS et réseau
-        const PROXY = "https://api.allorigins.win/raw?url=";
+            if (!res.ok) throw new Error("API bloquée ou quota atteint");
 
-        // --- COORDONNÉES DES STADES (Ligue 1 2025/2026) ---
-        const STADES_GPS = {
-            "Paris Saint-Germain": [48.8414, 2.2530],
-            "Marseille": [43.2698, 5.3959],
-            "Lyon": [45.7653, 4.9819],
-            "Monaco": [43.7276, 7.4155],
-            "Lille": [50.6119, 3.1305],
-            "Lens": [50.4328, 2.8149],
-            "Rennes": [48.1075, -1.7033],
-            "Nice": [43.7053, 7.1927],
-            "Brest": [48.4030, -4.4614],
-            "Strasbourg": [48.5603, 7.7546],
-            "Toulouse": [43.5833, 1.4341],
-            "Auxerre": [47.7867, 3.5880],
-            "Angers": [47.4615, -0.5302],
-            "Havre": [49.5002, 0.1701],
-            "Saint-Étienne": [45.4608, 4.3901],
-            "Nantes": [47.2561, -1.5247],
-            "Paris FC": [48.8284, 2.3761],
-            "Metz": [49.1098, 6.1590],
-            "Lorient": [47.7495, -3.3694]
-        };
+            const data = await res.json();
+            data.teams.forEach(team => {
+                ajouterMarqueur(team.name, team.id, team.venue);
+            });
+            document.getElementById('liste-matchs').innerHTML = "Données API chargées.";
 
-        // --- INITIALISATION CARTE ---
-        const map = L.map('map').setView([46.6, 2.2], 6);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '&copy; OpenStreetMap contributors'
-        }).addTo(map);
+        } catch (err) {
+            console.error(err);
+            document.getElementById('liste-matchs').innerHTML = `<div class="error">Mode secours activé (API injoignable via ton proxy).</div>`;
+            // MODE SECOURS : On affiche les points manuellement si l'API échoue
+            Object.keys(STADES_GPS).forEach(name => {
+                ajouterMarqueur(name, null, "Stade de " + name);
+            });
+        }
+    }
 
-        // --- LOGIQUE DE RECHERCHE FLEXIBLE ---
-        function getCoords(teamName) {
-            for (let key in STADES_GPS) {
-                if (teamName.includes(key)) return STADES_GPS[key];
-            }
-            return null;
+    function ajouterMarqueur(nom, id, stade) {
+        let coords = null;
+        for (let key in STADES_GPS) {
+            if (nom.includes(key)) coords = STADES_GPS[key];
         }
 
-        // --- CHARGEMENT DES ÉQUIPES ---
-        async function init() {
-            const statusDiv = document.getElementById('liste-matchs');
-            try {
-                const targetUrl = `https://api.football-data.org/v4/competitions/${COMPETITION}/teams`;
-                const finalUrl = PROXY + encodeURIComponent(targetUrl);
-
-                const res = await fetch(finalUrl, {
-                    headers: { 'X-Auth-Token': API_KEY }
+        if (coords) {
+            const marker = L.marker(coords).addTo(map);
+            marker.bindPopup(`<b>${nom}</b><br>${stade}`);
+            if (id) {
+                marker.on('click', () => chargerMatchs(id, nom));
+            } else {
+                marker.on('click', () => {
+                    document.getElementById('stade-nom').innerText = nom;
+                    document.getElementById('liste-matchs').innerHTML = "Matchs indisponibles en mode secours.";
                 });
-
-                if (!res.ok) throw new Error(`Erreur ${res.status}`);
-
-                const data = await res.json();
-                
-                data.teams.forEach(team => {
-                    const coords = getCoords(team.name);
-                    if (coords) {
-                        const marker = L.marker(coords).addTo(map);
-                        marker.bindPopup(`<b>${team.name}</b><br>${team.venue}`);
-                        
-                        marker.on('click', () => {
-                            document.getElementById('stade-nom').innerText = team.name;
-                            loadResults(team.id);
-                        });
-                    }
-                });
-
-                statusDiv.innerHTML = "Carte prête. Cliquez sur un stade pour voir les derniers résultats.";
-
-            } catch (err) {
-                console.error("Détails de l'erreur:", err);
-                statusDiv.innerHTML = `<div class="error-msg">Impossible de charger les données.<br>Le proxy ou la clé API est peut-être saturé.</div>`;
             }
         }
+    }
 
-        // --- CHARGEMENT DES RÉSULTATS ---
-        async function loadResults(teamId) {
-            const list = document.getElementById('liste-matchs');
-            list.innerHTML = "<div class='status-msg'>Chargement des matchs...</div>";
-
-            try {
-                const targetUrl = `https://api.football-data.org/v4/teams/${teamId}/matches?status=FINISHED&limit=5`;
-                const finalUrl = PROXY + encodeURIComponent(targetUrl);
-
-                const res = await fetch(finalUrl, {
-                    headers: { 'X-Auth-Token': API_KEY }
-                });
-                const data = await res.json();
-                
-                list.innerHTML = "";
-                if (!data.matches || data.matches.length === 0) {
-                    list.innerHTML = "<div class='status-msg'>Aucun match terminé trouvé.</div>";
-                    return;
-                }
-
-                data.matches.forEach(m => {
-                    const div = document.createElement('div');
-                    div.className = 'match-card';
-                    const dateMatch = new Date(m.utcDate).toLocaleDateString('fr-FR');
-                    div.innerHTML = `
-                        <span style="font-size:0.85em; color:#666">${dateMatch}</span>
-                        <span style="font-weight:500">${m.homeTeam.shortName} vs ${m.awayTeam.shortName}</span>
-                        <span class="score">${m.score.fullTime.home} - ${m.score.fullTime.away}</span>
-                    `;
-                    list.appendChild(div);
-                });
-            } catch (err) {
-                list.innerHTML = "<div class='error-msg'>Erreur lors du chargement des matchs.</div>";
-            }
+    async function chargerMatchs(id, nom) {
+        document.getElementById('stade-nom').innerText = nom;
+        const liste = document.getElementById('liste-matchs');
+        liste.innerHTML = "Chargement des matchs...";
+        try {
+            const res = await fetch(`https://api.football-data.org/v4/teams/${id}/matches?status=FINISHED&limit=5`, {
+                headers: { 'X-Auth-Token': API_KEY }
+            });
+            const data = await res.json();
+            liste.innerHTML = "";
+            data.matches.forEach(m => {
+                liste.innerHTML += `<div class="match-card">
+                    <span>${new Date(m.utcDate).toLocaleDateString()}</span>
+                    <span>${m.homeTeam.shortName} - ${m.awayTeam.shortName}</span>
+                    <span class="score">${m.score.fullTime.home}-${m.score.fullTime.away}</span>
+                </div>`;
+            });
+        } catch (e) {
+            liste.innerHTML = "Erreur chargement matchs.";
         }
+    }
 
-        init();
-    </script>
+    init();
+</script>
 </body>
 </html>
