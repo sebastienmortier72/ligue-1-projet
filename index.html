@@ -2,25 +2,195 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <title>Carte des Stades Ligue 1</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ligue 1 - Carte Interactive 2025/2026</title>
+    
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
     <style>
-        body { font-family: sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; }
-        #map { flex: 2; width: 100%; border-bottom: 2px solid #ccc; }
-        #matchs-container { flex: 1; padding: 20px; overflow-y: auto; background: #f9f9f9; }
-        .match-card { border-bottom: 1px solid #ddd; padding: 10px; display: flex; justify-content: space-between; }
-        .score { font-weight: bold; color: #2c3e50; }
+        :root {
+            --primary: #1a2a6c;
+            --accent: #fdbb2d;
+        }
+
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            margin: 0; 
+            display: flex; 
+            flex-direction: column; 
+            height: 100vh; 
+            background: #f0f2f5;
+        }
+
+        header {
+            background: var(--primary);
+            color: white;
+            padding: 1rem;
+            text-align: center;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        }
+
+        #map { 
+            flex: 2; 
+            width: 100%; 
+            z-index: 1;
+        }
+
+        #matchs-container { 
+            flex: 1; 
+            padding: 20px; 
+            overflow-y: auto; 
+            background: white;
+            border-top: 4px solid var(--accent);
+        }
+
+        .stade-titre {
+            color: var(--primary);
+            margin-top: 0;
+            border-bottom: 2px solid #eee;
+            padding-bottom: 10px;
+        }
+
+        .match-card { 
+            border-bottom: 1px solid #eee; 
+            padding: 12px; 
+            display: flex; 
+            justify-content: space-between;
+            align-items: center;
+            transition: background 0.2s;
+        }
+
+        .match-card:hover {
+            background: #f9f9f9;
+        }
+
+        .date { color: #666; font-size: 0.9rem; width: 100px; }
+        .equipes { flex-grow: 1; text-align: center; font-weight: 500; }
+        .score { 
+            background: var(--primary);
+            color: white;
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-weight: bold;
+            margin-left: 15px;
+            min-width: 40px;
+            text-align: center;
+        }
+
+        .loader { text-align: center; color: #666; font-style: italic; }
     </style>
 </head>
 <body>
 
+    <header>
+        <h1>Ligue 1 Interactive - Saison 2025/2026</h1>
+    </header>
+
     <div id="map"></div>
+
     <div id="matchs-container">
-        <h2 id="stade-nom">Cliquez sur un stade sur la carte</h2>
-        <div id="liste-matchs"></div>
+        <h2 id="stade-nom" class="stade-titre">Sélectionnez un stade sur la carte</h2>
+        <div id="liste-matchs">
+            <p class="loader">Les résultats s'afficheront ici après avoir cliqué sur un club.</p>
+        </div>
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="script.js"></script>
+
+    <script>
+        // CONFIGURATION
+        const API_KEY = 'TON_API_KEY_ICI'; // <-- REMPLACE PAR TA CLÉ
+        const COMPETITION = 'FL1'; 
+
+        // Coordonnées GPS des clubs 25/26 (Mis à jour sans Reims/Montpellier)
+        const STADES_GPS = {
+            "Paris Saint-Germain FC": [48.8414, 2.2530],
+            "Olympique de Marseille": [43.2698, 5.3959],
+            "Olympique Lyonnais": [45.7653, 4.9819],
+            "AS Monaco FC": [43.7276, 7.4155],
+            "Lille OSC": [50.6119, 3.1305],
+            "RC Lens": [50.4328, 2.8149],
+            "Stade Rennais FC 1901": [48.1075, -1.7033],
+            "OGC Nice": [43.7053, 7.1927],
+            "Stade Brestois 29": [48.4030, -4.4614],
+            "RC Strasbourg Alsace": [48.5603, 7.7546],
+            "Toulouse FC": [43.5833, 1.4341],
+            "AJ Auxerre": [47.7867, 3.5880],
+            "Angers SCO": [47.4615, -0.5302],
+            "Le Havre AC": [49.5002, 0.1701],
+            "AS Saint-Étienne": [45.4608, 4.3901],
+            "FC Nantes": [47.2561, -1.5247],
+            "Paris FC": [48.8284, 2.3761],
+            "FC Metz": [49.1098, 6.1590],
+            "FC Lorient": [47.7495, -3.3694]
+        };
+
+        // Initialisation Carte
+        const map = L.map('map').setView([46.6033, 1.8883], 6);
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+            attribution: '&copy; OpenStreetMap'
+        }).addTo(map);
+
+        // Charger les clubs
+        async function loadLeague() {
+            try {
+                const response = await fetch(`https://api.football-data.org/v4/competitions/${COMPETITION}/teams`, {
+                    headers: { 'X-Auth-Token': API_KEY }
+                });
+                const data = await response.json();
+
+                data.teams.forEach(team => {
+                    const coords = STADES_GPS[team.name];
+                    if (coords) {
+                        const marker = L.marker(coords).addTo(map);
+                        marker.bindPopup(`<b>${team.name}</b><br>${team.venue}`);
+                        
+                        marker.on('click', () => {
+                            document.getElementById('stade-nom').innerText = team.name;
+                            loadResults(team.id);
+                        });
+                    }
+                });
+            } catch (err) {
+                console.error("Erreur chargement équipes:", err);
+            }
+        }
+
+        // Charger les derniers résultats
+        async function loadResults(teamId) {
+            const container = document.getElementById('liste-matchs');
+            container.innerHTML = '<p class="loader">Récupération des derniers matchs...</p>';
+
+            try {
+                const response = await fetch(`https://api.football-data.org/v4/teams/${teamId}/matches?status=FINISHED&limit=8`, {
+                    headers: { 'X-Auth-Token': API_KEY }
+                });
+                const data = await response.json();
+                
+                container.innerHTML = ""; 
+                
+                if (data.matches.length === 0) {
+                    container.innerHTML = "<p>Aucun match terminé trouvé pour cette saison.</p>";
+                    return;
+                }
+
+                data.matches.forEach(match => {
+                    const date = new Date(match.utcDate).toLocaleDateString('fr-FR');
+                    const card = document.createElement('div');
+                    card.className = 'match-card';
+                    card.innerHTML = `
+                        <div class="date">${date}</div>
+                        <div class="equipes">${match.homeTeam.shortName} vs ${match.awayTeam.shortName}</div>
+                        <div class="score">${match.score.fullTime.home} - ${match.score.fullTime.away}</div>
+                    `;
+                    container.appendChild(card);
+                });
+            } catch (err) {
+                container.innerHTML = "<p>Erreur lors de l'appel API (limite atteinte ?).</p>";
+            }
+        }
+
+        loadLeague();
+    </script>
 </body>
 </html>
