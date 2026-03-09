@@ -8,13 +8,14 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     
     <style>
-        body { font-family: 'Segoe UI', sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; background: #eee; }
-        header { background: #1a2a6c; color: white; padding: 10px 20px; text-align: center; }
+        body { font-family: 'Segoe UI', sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; background: #f4f4f9; }
+        header { background: #1a2a6c; color: white; padding: 15px; text-align: center; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
         #map { flex: 2; width: 100%; }
-        #matchs-container { flex: 1; padding: 20px; overflow-y: auto; background: white; border-top: 4px solid #fdbb2d; }
-        .match-card { border-bottom: 1px solid #eee; padding: 10px; display: flex; justify-content: space-between; align-items: center; }
-        .score { background: #1a2a6c; color: white; padding: 3px 10px; border-radius: 4px; font-weight: bold; }
-        .error-msg { color: red; font-weight: bold; text-align: center; padding: 10px; }
+        #matchs-container { flex: 1; padding: 20px; overflow-y: auto; background: white; border-top: 5px solid #fdbb2d; }
+        .match-card { border-bottom: 1px solid #eee; padding: 12px; display: flex; justify-content: space-between; align-items: center; }
+        .score { background: #1a2a6c; color: white; padding: 5px 12px; border-radius: 4px; font-weight: bold; font-family: monospace; }
+        .status-msg { text-align: center; font-style: italic; color: #666; padding: 20px; }
+        .error-msg { color: #d9534f; font-weight: bold; text-align: center; padding: 20px; }
     </style>
 </head>
 <body>
@@ -26,18 +27,20 @@
     <div id="map"></div>
 
     <div id="matchs-container">
-        <h2 id="stade-nom">Cliquez sur un stade</h2>
-        <div id="liste-matchs">Les points s'affichent si la clé API est valide...</div>
+        <h2 id="stade-nom">Sélectionnez un stade sur la carte</h2>
+        <div id="liste-matchs" class="status-msg">Chargement des données via proxy...</div>
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
     <script>
-        // 1. CONFIGURATION (METS TA CLÉ ICI)
+        // --- CONFIGURATION ---
         const API_KEY = '42ddec7c6cd54e0786b0444e2001c25e'; 
         const COMPETITION = 'FL1'; 
+        // Proxy pour éviter les blocages CORS et réseau
+        const PROXY = "https://api.allorigins.win/raw?url=";
 
-        // 2. COORDONNÉES DES STADES (Noms simplifiés pour matcher plus facilement)
+        // --- COORDONNÉES DES STADES (Ligue 1 2025/2026) ---
         const STADES_GPS = {
             "Paris Saint-Germain": [48.8414, 2.2530],
             "Marseille": [43.2698, 5.3959],
@@ -60,11 +63,13 @@
             "Lorient": [47.7495, -3.3694]
         };
 
-        // 3. INITIALISATION CARTE
+        // --- INITIALISATION CARTE ---
         const map = L.map('map').setView([46.6, 2.2], 6);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; OpenStreetMap contributors'
+        }).addTo(map);
 
-        // 4. FONCTION POUR TROUVER LES COORDONNÉES (Flexible)
+        // --- LOGIQUE DE RECHERCHE FLEXIBLE ---
         function getCoords(teamName) {
             for (let key in STADES_GPS) {
                 if (teamName.includes(key)) return STADES_GPS[key];
@@ -72,17 +77,18 @@
             return null;
         }
 
-        // 5. CHARGEMENT DES DONNÉES
+        // --- CHARGEMENT DES ÉQUIPES ---
         async function init() {
+            const statusDiv = document.getElementById('liste-matchs');
             try {
-                const res = await fetch(`https://api.football-data.org/v4/competitions/${COMPETITION}/teams`, {
+                const targetUrl = `https://api.football-data.org/v4/competitions/${COMPETITION}/teams`;
+                const finalUrl = PROXY + encodeURIComponent(targetUrl);
+
+                const res = await fetch(finalUrl, {
                     headers: { 'X-Auth-Token': API_KEY }
                 });
 
-                if (res.status === 403) {
-                    document.getElementById('liste-matchs').innerHTML = "<p class='error-msg'>Erreur 403 : Clé API invalide ou accès refusé.</p>";
-                    return;
-                }
+                if (!res.ok) throw new Error(`Erreur ${res.status}`);
 
                 const data = await res.json();
                 
@@ -96,42 +102,50 @@
                             document.getElementById('stade-nom').innerText = team.name;
                             loadResults(team.id);
                         });
-                    } else {
-                        console.warn("Pas de GPS pour :", team.name);
                     }
                 });
 
-                document.getElementById('liste-matchs').innerHTML = "Carte chargée. Cliquez sur un point.";
+                statusDiv.innerHTML = "Carte prête. Cliquez sur un stade pour voir les derniers résultats.";
 
             } catch (err) {
-                console.error(err);
-                document.getElementById('liste-matchs').innerHTML = "Erreur de connexion à l'API.";
+                console.error("Détails de l'erreur:", err);
+                statusDiv.innerHTML = `<div class="error-msg">Impossible de charger les données.<br>Le proxy ou la clé API est peut-être saturé.</div>`;
             }
         }
 
+        // --- CHARGEMENT DES RÉSULTATS ---
         async function loadResults(teamId) {
             const list = document.getElementById('liste-matchs');
-            list.innerHTML = "Chargement...";
+            list.innerHTML = "<div class='status-msg'>Chargement des matchs...</div>";
 
             try {
-                const res = await fetch(`https://api.football-data.org/v4/teams/${teamId}/matches?status=FINISHED&limit=5`, {
+                const targetUrl = `https://api.football-data.org/v4/teams/${teamId}/matches?status=FINISHED&limit=5`;
+                const finalUrl = PROXY + encodeURIComponent(targetUrl);
+
+                const res = await fetch(finalUrl, {
                     headers: { 'X-Auth-Token': API_KEY }
                 });
                 const data = await res.json();
                 
                 list.innerHTML = "";
+                if (!data.matches || data.matches.length === 0) {
+                    list.innerHTML = "<div class='status-msg'>Aucun match terminé trouvé.</div>";
+                    return;
+                }
+
                 data.matches.forEach(m => {
                     const div = document.createElement('div');
                     div.className = 'match-card';
+                    const dateMatch = new Date(m.utcDate).toLocaleDateString('fr-FR');
                     div.innerHTML = `
-                        <span>${new Date(m.utcDate).toLocaleDateString()}</span>
-                        <span>${m.homeTeam.shortName} vs ${m.awayTeam.shortName}</span>
+                        <span style="font-size:0.85em; color:#666">${dateMatch}</span>
+                        <span style="font-weight:500">${m.homeTeam.shortName} vs ${m.awayTeam.shortName}</span>
                         <span class="score">${m.score.fullTime.home} - ${m.score.fullTime.away}</span>
                     `;
                     list.appendChild(div);
                 });
             } catch (err) {
-                list.innerHTML = "Erreur matchs.";
+                list.innerHTML = "<div class='error-msg'>Erreur lors du chargement des matchs.</div>";
             }
         }
 
